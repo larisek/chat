@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Šifra — P2P chat</title>
+<meta name="theme-color" content="#0B0E14">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<style>
+:root{
+  --bg:#0B0E14; --panel:#121826; --panel2:#1A2233; --border:#232C3E;
+  --text:#E7ECF3; --muted:#8A93A6; --teal:#45D8C0; --violet:#8C7CFF;
+  --success:#34D399; --danger:#F87171; --radius:16px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:'Inter',sans-serif; overscroll-behavior:none;
+  display:flex; flex-direction:column; height:100vh; height:100dvh;
+}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif; margin:0;}
+.mono{font-family:'JetBrains Mono',monospace;}
+.muted{color:var(--muted);}
+button{font-family:inherit; cursor:pointer;}
+.screen{flex:1; display:none; flex-direction:column; min-height:0;}
+.screen.active{display:flex;}
+
+/* ---- topbar ---- */
+.topbar{
+  display:flex; align-items:center; gap:10px; padding:14px 16px;
+  padding-top:calc(14px + env(safe-area-inset-top));
+  border-bottom:1px solid var(--border); background:var(--panel);
+  flex-shrink:0;
+}
+.topbar h1{font-size:19px; letter-spacing:.2px;}
+.topbar .sub{font-size:12px; color:var(--muted); margin-top:1px;}
+.iconbtn{
+  width:38px; height:38px; border-radius:12px; border:1px solid var(--border);
+  background:var(--panel2); color:var(--text); display:flex; align-items:center; justify-content:center;
+  font-size:18px; flex-shrink:0;
+}
+.iconbtn:active{background:var(--border);}
+.spacer{flex:1;}
+
+/* ---- lock signature (home hero) ---- */
+.lock-badge{
+  display:flex; align-items:center; gap:10px; padding:12px 16px; margin:14px 16px 0;
+  background:linear-gradient(135deg, rgba(69,216,192,.12), rgba(140,124,255,.10));
+  border:1px solid rgba(69,216,192,.25); border-radius:var(--radius);
+}
+.lock-badge svg{flex-shrink:0;}
+.lock-badge .t1{font-size:13px; font-weight:600;}
+.lock-badge .t2{font-size:11.5px; color:var(--muted);}
+
+/* ---- contact list ---- */
+.list{flex:1; overflow-y:auto; padding:8px 10px 90px;}
+.contact{
+  display:flex; align-items:center; gap:12px; padding:13px 12px; border-radius:14px;
+  margin:4px 0;
+}
+.contact:active{background:var(--panel2);}
+.avatar{
+  width:44px; height:44px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,var(--teal),var(--violet));
+  display:flex; align-items:center; justify-content:center; font-weight:700; color:#0B0E14; font-size:16px;
+}
+.c-info{flex:1; min-width:0;}
+.c-name{font-weight:600; font-size:15px;}
+.c-last{font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--border); flex-shrink:0;}
+.dot.online{background:var(--success); box-shadow:0 0 6px var(--success);}
+
+.empty{
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding:30px; gap:8px;
+}
+.empty svg{opacity:.5; margin-bottom:6px;}
+
+.fab{
+  position:fixed; right:20px; bottom:calc(22px + env(safe-area-inset-bottom));
+  width:58px; height:58px; border-radius:50%; border:none;
+  background:linear-gradient(135deg,var(--teal),var(--violet)); color:#0B0E14;
+  font-size:26px; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 8px 24px rgba(69,216,192,.25); z-index:20;
+}
+.fab:active{transform:scale(.94);}
+
+/* ---- chat ---- */
+.msgs{flex:1; overflow-y:auto; padding:14px 12px; display:flex; flex-direction:column; gap:8px;}
+.bubble{max-width:78%; padding:9px 13px; border-radius:16px; font-size:14.5px; line-height:1.42; word-wrap:break-word;}
+.bubble .ts{display:block; font-size:10px; margin-top:3px; opacity:.6;}
+.bubble.out{align-self:flex-end; background:linear-gradient(135deg,#1e5a52,#173a5e); border-bottom-right-radius:5px;}
+.bubble.in{align-self:flex-start; background:var(--panel2); border-bottom-left-radius:5px;}
+.bubble.sys{align-self:center; background:transparent; color:var(--muted); font-size:12px; text-align:center; max-width:90%;}
+.composer{
+  display:flex; gap:8px; padding:10px 12px; padding-bottom:calc(10px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--border); background:var(--panel); flex-shrink:0;
+}
+.composer input{
+  flex:1; border-radius:22px; border:1px solid var(--border); background:var(--panel2);
+  color:var(--text); padding:11px 16px; font-size:15px; outline:none;
+}
+.sendbtn{
+  width:42px; height:42px; border-radius:50%; border:none; background:var(--teal); color:#0B0E14;
+  font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.sendbtn:disabled{opacity:.4;}
+.connbar{
+  display:flex; align-items:center; gap:8px; padding:9px 14px; font-size:12.5px;
+  background:var(--panel2); border-bottom:1px solid var(--border);
+}
+.pillbtn{
+  margin-left:auto; padding:5px 12px; border-radius:20px; border:1px solid var(--teal);
+  color:var(--teal); background:transparent; font-size:12px; font-weight:600;
+}
+
+/* ---- generic content screens ---- */
+.content{flex:1; overflow-y:auto; padding:20px 18px 40px;}
+.card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:14px;}
+.stepper{display:flex; gap:6px; margin-bottom:18px;}
+.stepper .seg{flex:1; height:4px; border-radius:3px; background:var(--border);}
+.stepper .seg.on{background:var(--teal);}
+.btn{
+  width:100%; padding:14px; border-radius:14px; border:none; font-size:15px; font-weight:600;
+  background:var(--teal); color:#0B0E14; margin-top:6px;
+}
+.btn:disabled{opacity:.4;}
+.btn.secondary{background:var(--panel2); color:var(--text); border:1px solid var(--border);}
+.btn.ghost{background:transparent; color:var(--muted); border:1px solid var(--border);}
+label{font-size:12.5px; color:var(--muted); display:block; margin:14px 0 6px;}
+input[type=text], textarea{
+  width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:12px;
+  color:var(--text); padding:12px 14px; font-size:15px; outline:none; resize:none;
+}
+textarea{font-family:'JetBrains Mono',monospace; font-size:12.5px; min-height:90px;}
+.phrase-box{
+  font-family:'JetBrains Mono',monospace; font-size:19px; font-weight:600; letter-spacing:.5px;
+  background:var(--panel2); border:1px dashed var(--teal); border-radius:14px; padding:16px;
+  text-align:center; color:var(--teal); margin:12px 0;
+}
+.qrwrap{background:#fff; border-radius:16px; padding:16px; display:flex; align-items:center; justify-content:center; margin:14px 0;}
+#video{width:100%; border-radius:14px; background:#000; margin:12px 0;}
+.tag{display:inline-block; font-size:11px; padding:3px 9px; border-radius:8px; background:var(--panel2); color:var(--muted); margin-bottom:8px;}
+.warn{background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.3); color:#FCA5A5; border-radius:12px; padding:11px 13px; font-size:13px; margin:10px 0;}
+.ok{background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.3); color:#6EE7B7; border-radius:12px; padding:11px 13px; font-size:13px; margin:10px 0;}
+.tabs{display:flex; gap:6px; margin-bottom:16px;}
+.tab{flex:1; padding:10px; text-align:center; border-radius:12px; background:var(--panel2); border:1px solid var(--border); font-size:13.5px; color:var(--muted); font-weight:600;}
+.tab.active{background:rgba(69,216,192,.15); border-color:var(--teal); color:var(--teal);}
+.finger{font-family:'JetBrains Mono',monospace; font-size:13px; letter-spacing:1px; color:var(--violet); word-break:break-all; text-align:center; padding:10px; background:var(--panel2); border-radius:10px;}
+::-webkit-scrollbar{width:0;}
+</style>
+</head>
+<body>
+
+<!-- ================= HOME ================= -->
+<div class="screen active" id="screen-home">
+  <div class="topbar">
+    <div>
+      <h1>Šifra</h1>
+      <div class="sub" id="home-sub">Přímé P2P spojení · bez serveru</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" onclick="nav('settings')">⚙︎</button>
+  </div>
+  <div class="lock-badge">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2.5" stroke="#45D8C0" stroke-width="1.6"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11" stroke="#45D8C0" stroke-width="1.6"/><circle cx="12" cy="15.2" r="1.4" fill="#45D8C0"/></svg>
+    <div>
+      <div class="t1">End-to-end šifrováno</div>
+      <div class="t2">Klíče existují jen na vašich zařízeních</div>
+    </div>
+  </div>
+  <div class="list" id="contact-list"></div>
+  <button class="fab" onclick="nav('addChoice')">+</button>
+</div>
+
+<!-- ================= ADD CHOICE ================= -->
+<div class="screen" id="screen-addChoice">
+  <div class="topbar"><button class="iconbtn" onclick="nav('home')">←</button><h1>Přidat zařízení</h1></div>
+  <div class="content">
+    <p class="muted" style="font-size:13.5px; line-height:1.5;">Spárování proběhne jen jednou. Jedno zařízení kód <b>vytvoří</b>, druhé ho <b>naskenuje</b>. K dokončení je potřeba tajná fráze, kterou si sdělíte ústně nebo jiným bezpečným kanálem.</p>
+    <button class="btn" onclick="startInitiator()">Vytvořit nové párování</button>
+    <button class="btn secondary" onclick="startJoiner()">Mám kód od druhého zařízení</button>
+  </div>
+</div>
+
+<!-- ================= INITIATOR FLOW ================= -->
+<div class="screen" id="screen-initA">
+  <div class="topbar"><button class="iconbtn" onclick="cancelPairing()">✕</button><h1>Krok 1 z 2</h1></div>
+  <div class="stepper" style="margin:14px 18px 0;"><div class="seg on"></div><div class="seg"></div></div>
+  <div class="content">
+    <label>Tajná fráze pro toto párování</label>
+    <div class="phrase-box" id="gen-phrase">…</div>
+    <p class="muted" style="font-size:12.5px;">Řekněte tuto frázi nahlas osobě u druhého zařízení (nebo pošlete jiným kanálem, než kterým pošlete kód níže).</p>
+    <div class="qrwrap"><div id="qr-offer"></div></div>
+    <p class="muted" style="font-size:12px; text-align:center;">Naskenujte tento kód druhým zařízením, nebo zkopírujte text:</p>
+    <textarea id="offer-text" readonly onclick="this.select()"></textarea>
+    <button class="btn secondary" onclick="copyText('offer-text')">Kopírovat kód</button>
+    <button class="btn" onclick="nav('initB')" id="btn-goto-scan">Naskenoval jsem odpověď →</button>
+  </div>
+</div>
+
+<div class="screen" id="screen-initB">
+  <div class="topbar"><button class="iconbtn" onclick="nav('initA')">←</button><h1>Krok 2 z 2</h1></div>
+  <div class="stepper" style="margin:14px 18px 0;"><div class="seg on"></div><div class="seg on"></div></div>
+  <div class="content">
+    <p class="muted" style="font-size:13px;">Naskenujte odpovědní kód z druhého zařízení, nebo ho vložte jako text.</p>
+    <div class="tabs">
+      <div class="tab active" id="tabA-cam" onclick="switchTab('A','cam')">Kamera</div>
+      <div class="tab" id="tabA-txt" onclick="switchTab('A','txt')">Vložit text</div>
+    </div>
+    <div id="camA"><video id="video-A" playsinline muted></video></div>
+    <div id="txtA" style="display:none;">
+      <textarea id="answer-text" placeholder="Vložte kód odpovědi zde…"></textarea>
+      <button class="btn secondary" onclick="processAnswerText()">Zpracovat kód</button>
+    </div>
+    <div id="init-status"></div>
+  </div>
+</div>
+
+<!-- ================= JOINER FLOW ================= -->
+<div class="screen" id="screen-joinA">
+  <div class="topbar"><button class="iconbtn" onclick="cancelPairing()">✕</button><h1>Přidat zařízení</h1></div>
+  <div class="content">
+    <label>Zadejte tajnou frázi, kterou vám sdělilo první zařízení</label>
+    <input type="text" id="join-phrase" placeholder="např. lampa-hora-modrý-vlak">
+    <label>Vaše jméno (uvidí ho druhá strana)</label>
+    <input type="text" id="join-myname" placeholder="např. Petrův telefon">
+    <button class="btn" onclick="nav('joinScan')" id="btn-join-continue">Pokračovat na skenování</button>
+  </div>
+</div>
+
+<div class="screen" id="screen-joinScan">
+  <div class="topbar"><button class="iconbtn" onclick="nav('joinA')">←</button><h1>Naskenujte kód</h1></div>
+  <div class="content">
+    <div class="tabs">
+      <div class="tab active" id="tabB-cam" onclick="switchTab('B','cam')">Kamera</div>
+      <div class="tab" id="tabB-txt" onclick="switchTab('B','txt')">Vložit text</div>
+    </div>
+    <div id="camB"><video id="video-B" playsinline muted></video></div>
+    <div id="txtB" style="display:none;">
+      <textarea id="offer-text-in" placeholder="Vložte kód od prvního zařízení…"></textarea>
+      <button class="btn secondary" onclick="processOfferText()">Zpracovat kód</button>
+    </div>
+    <div id="join-status"></div>
+  </div>
+</div>
+
+<div class="screen" id="screen-joinB">
+  <div class="topbar"><h1>Hotovo — poslední krok</h1></div>
+  <div class="content">
+    <p class="muted" style="font-size:13px;">Ukažte tento odpovědní kód zpět prvnímu zařízení k naskenování.</p>
+    <div class="qrwrap"><div id="qr-answer"></div></div>
+    <textarea id="answer-out-text" readonly onclick="this.select()"></textarea>
+    <button class="btn secondary" onclick="copyText('answer-out-text')">Kopírovat kód</button>
+    <div id="joinB-status" style="margin-top:14px;"></div>
+    <button class="btn" onclick="nav('home')" id="btn-join-done" style="display:none;">Hotovo</button>
+  </div>
+</div>
+
+<!-- ================= CHAT ================= -->
+<div class="screen" id="screen-chat">
+  <div class="topbar">
+    <button class="iconbtn" onclick="closeChat()">←</button>
+    <div class="avatar" id="chat-avatar" style="width:36px;height:36px;font-size:13px;"></div>
+    <div>
+      <h1 style="font-size:16px;" id="chat-name"></h1>
+      <div class="sub" id="chat-status">nepřipojeno</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" onclick="showFingerprint()">🔑</button>
+  </div>
+  <div class="connbar" id="connbar" style="display:none;">
+    <span id="connbar-text"></span>
+    <button class="pillbtn" id="connbar-btn" onclick="reconnectFlow()">Připojit</button>
+  </div>
+  <div class="msgs" id="msgs"></div>
+  <div class="composer">
+    <input type="text" id="msg-input" placeholder="Napište zprávu…" onkeydown="if(event.key==='Enter')sendMessage()">
+    <button class="sendbtn" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<!-- ================= RECONNECT ================= -->
+<div class="screen" id="screen-reconnect">
+  <div class="topbar"><button class="iconbtn" onclick="nav('chat')">←</button><h1>Připojit zařízení</h1></div>
+  <div class="content">
+    <p class="muted" style="font-size:13px;">Obě zařízení musí mít appku otevřenou. Kód je ověřen vaším uloženým klíčem — frázi znovu nepotřebujete.</p>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('R','out')" id="tabR-out">Můj kód</div>
+      <div class="tab" onclick="switchTab('R','in')" id="tabR-in">Naskenovat/vložit</div>
+    </div>
+    <div id="rOut">
+      <div class="qrwrap"><div id="qr-recon"></div></div>
+      <textarea id="recon-out-text" readonly onclick="this.select()"></textarea>
+      <button class="btn secondary" onclick="copyText('recon-out-text')">Kopírovat kód</button>
+    </div>
+    <div id="rIn" style="display:none;">
+      <div class="tabs">
+        <div class="tab active" id="tabR2-cam" onclick="switchTab('R2','cam')">Kamera</div>
+        <div class="tab" id="tabR2-txt" onclick="switchTab('R2','txt')">Vložit text</div>
+      </div>
+      <div id="camR"><video id="video-R" playsinline muted></video></div>
+      <div id="txtR" style="display:none;">
+        <textarea id="recon-in-text" placeholder="Vložte kód…"></textarea>
+        <button class="btn secondary" onclick="processReconText()">Zpracovat</button>
+      </div>
+    </div>
+    <div id="recon-status"></div>
+  </div>
+</div>
+
+<!-- ================= FINGERPRINT ================= -->
+<div class="screen" id="screen-fingerprint">
+  <div class="topbar"><button class="iconbtn" onclick="nav('chat')">←</button><h1>Ověření klíčů</h1></div>
+  <div class="content">
+    <p class="muted" style="font-size:13px;">Pro jistotu, že nikdo spojení neodposlouchává, si tento kód porovnejte s protistranou nahlas nebo přes jiný kanál. Musí se přesně shodovat.</p>
+    <div class="card">
+      <div class="tag">Otisk tohoto spojení</div>
+      <div class="finger" id="fp-value">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SETTINGS ================= -->
+<div class="screen" id="screen-settings">
+  <div class="topbar"><button class="iconbtn" onclick="nav('home')">←</button><h1>Nastavení</h1></div>
+  <div class="content">
+    <div class="card">
+      <div class="tag">Toto zařízení</div>
+      <label style="margin-top:0;">Jméno zařízení</label>
+      <input type="text" id="my-name-input">
+      <button class="btn secondary" onclick="saveMyName()" style="margin-top:10px;">Uložit</button>
+    </div>
+    <div class="card">
+      <div class="tag">ID zařízení</div>
+      <div class="finger mono" id="my-id-val" style="font-size:11px;">—</div>
+    </div>
+    <div class="warn">Smazáním appky nebo daty prohlížeče se nenávratně ztratí šifrovací klíče i historie zpráv.</div>
+  </div>
+</div>
+
+<script>
+/* ===================== IndexedDB layer ===================== */
+let db;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open('sifra-db', 1);
+    r.onupgradeneeded = e=>{
+      const d = e.target.result;
+      d.createObjectStore('meta',{keyPath:'k'});
+      d.createObjectStore('contacts',{keyPath:'id'});
+      const m = d.createObjectStore('messages',{keyPath:'mid', autoIncrement:true});
+      m.createIndex('contactId','contactId');
+    };
+    r.onsuccess = e=>{db=e.target.result; res(db);};
+    r.onerror = e=>rej(e);
+  });
+}
+function idbGet(store,key){return new Promise((res,rej)=>{const t=db.transaction(store,'readonly').objectStore(store).get(key); t.onsuccess=()=>res(t.result); t.onerror=rej;});}
+function idbPut(store,val){return new Promise((res,rej)=>{const t=db.transaction(store,'readwrite').objectStore(store).put(val); t.onsuccess=()=>res(t.result); t.onerror=rej;});}
+function idbAll(store){return new Promise((res,rej)=>{const out=[]; const t=db.transaction(store,'readonly').objectStore(store).openCursor(); t.onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue();} else res(out);}; t.onerror=rej;});}
+function idbAllByIndex(store,index,val){return new Promise((res,rej)=>{const out=[]; const t=db.transaction(store,'readonly').objectStore(store).index(index).openCursor(IDBKeyRange.only(val)); t.onsuccess=e=>{const c=e.target.result; if(c){out.push(c.value); c.continue();} else res(out);}; t.onerror=rej;});}
+
+/* ===================== Crypto helpers ===================== */
+const b64 = {
+  enc: buf => btoa(String.fromCharCode(...new Uint8Array(buf))),
+  dec: str => Uint8Array.from(atob(str), c=>c.charCodeAt(0)).buffer
+};
+async function genIdentity(){
+  const kp = await crypto.subtle.generateKey({name:'ECDH', namedCurve:'P-256'}, false, ['deriveKey','deriveBits']);
+  return kp;
+}
+async function exportPub(pubKey){
+  const jwk = await crypto.subtle.exportKey('jwk', pubKey);
+  return jwk;
+}
+async function importPub(jwk){
+  return crypto.subtle.importKey('jwk', jwk, {name:'ECDH', namedCurve:'P-256'}, true, []);
+}
+async function deriveSharedAesKey(privateKey, peerPubJwk){
+  const peerPub = await importPub(peerPubJwk);
+  return crypto.subtle.deriveKey({name:'ECDH', public:peerPub}, privateKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+async function pbkdf2Key(phrase, saltB64){
+  const salt = saltB64 ? new Uint8Array(b64.dec(saltB64)) : crypto.getRandomValues(new Uint8Array(16));
+  const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(phrase.trim().toLowerCase()), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:150000, hash:'SHA-256'}, baseKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+  return {key, saltB64: b64.enc(salt.buffer)};
+}
+async function aesEncryptJSON(key, obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
+  return {iv:b64.enc(iv.buffer), ct:b64.enc(ct)};
+}
+async function aesDecryptJSON(key, payload){
+  const iv = new Uint8Array(b64.dec(payload.iv));
+  const pt = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, b64.dec(payload.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function randId(){return b64.enc(crypto.getRandomValues(new Uint8Array(9)).buffer).replace(/[+/=]/g,'').slice(0,12);}
+
+/* Simple wordlist for pairing phrase (Czech, easy to say aloud) */
+const WORDS = ["lampa","hora","modrý","vlak","řeka","kámen","strom","most","cesta","měsíc","slunce","dům","kolo","vítr","oheň","voda","pole","les","pták","ryba","hrad","dveře","okno","stůl","židle","kniha","tužka","hodiny","zámek","klíč","světlo","stín","zahrada","kopec","louka","potok","skála","jeskyně","ostrov","loď"];
+function genPhrase(){
+  const pick = ()=>WORDS[Math.floor(Math.random()*WORDS.length)];
+  return [pick(),pick(),pick(),pick()].join("-");
+}
+
+/* ===================== App state ===================== */
+let ME = {id:null, name:null, keyPair:null};
+let CONTACTS = {}; // id -> {id,name,pubJwk}
+let ACTIVE_CONTACT = null;
+let PC_MAP = {}; // contactId -> {pc, dc, sharedKey}
+let PAIRING = {}; // temp state during pairing flow
+let currentScreen = 'home';
+
+async function boot(){
+  await openDB();
+  let meta = await idbGet('meta','me');
+  if(!meta){
+    const kp = await genIdentity();
+    const pub = await exportPub(kp.publicKey);
+    ME = {id: randId(), name: 'Moje zařízení', keyPair: kp, pubJwk: pub};
+    await idbPut('meta', {k:'me', id:ME.id, name:ME.name, pubJwk:pub});
+    await idbPut('meta', {k:'privRef', ref:true}); // placeholder
+    // store keypair object itself (CryptoKey structured-clonable)
+    await idbPut('meta', {k:'keypair', kp});
+  } else {
+    const kpRec = await idbGet('meta','keypair');
+    ME = {id: meta.id, name: meta.name, keyPair: kpRec.kp, pubJwk: meta.pubJwk};
+  }
+  document.getElementById('my-name-input').value = ME.name;
+  document.getElementById('my-id-val').textContent = ME.id;
+  const list = await idbAll('contacts');
+  list.forEach(c=>CONTACTS[c.id]=c);
+  renderContacts();
+}
+
+function renderContacts(){
+  const el = document.getElementById('contact-list');
+  const ids = Object.keys(CONTACTS);
+  if(ids.length===0){
+    el.innerHTML = `<div class="empty">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2.5" stroke="#8A93A6" stroke-width="1.4"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11" stroke="#8A93A6" stroke-width="1.4"/></svg>
+      <div style="font-weight:600;">Zatím žádná zařízení</div>
+      <div class="muted" style="font-size:13px;">Klepněte na + a spárujte první zařízení</div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = ids.map(id=>{
+    const c = CONTACTS[id];
+    const online = PC_MAP[id] && PC_MAP[id].dc && PC_MAP[id].dc.readyState==='open';
+    return `<div class="contact" onclick="openChat('${id}')">
+      <div class="avatar">${c.name.slice(0,1).toUpperCase()}</div>
+      <div class="c-info">
+        <div class="c-name">${escapeHtml(c.name)}</div>
+        <div class="c-last">${online?'Připojeno':'Klepnutím otevřít'}</div>
+      </div>
+      <div class="dot ${online?'online':''}"></div>
+    </div>`;
+  }).join('');
+}
+function escapeHtml(s){return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+function nav(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  currentScreen = name;
+  stopAllCameras();
+}
+
+/* ===================== WebRTC helpers ===================== */
+const ICE_SERVERS = [{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}];
+function waitIceComplete(pc){
+  return new Promise(resolve=>{
+    if(pc.iceGatheringState==='complete'){resolve(); return;}
+    function check(){ if(pc.iceGatheringState==='complete'){ pc.removeEventListener('icegatheringstatechange',check); resolve(); } }
+    pc.addEventListener('icegatheringstatechange', check);
+    setTimeout(()=>resolve(), 4000); // safety timeout
+  });
+}
+function setupDataChannelHandlers(contactId, dc){
+  dc.onopen = ()=>{ renderContacts(); updateChatHeader(); appendSystem(contactId,'Spojení navázáno'); };
+  dc.onclose = ()=>{ renderContacts(); updateChatHeader(); };
+  dc.onmessage = async (ev)=>{
+    try{
+      const payload = JSON.parse(ev.data);
+      const entry = PC_MAP[contactId];
+      const plain = await aesDecryptJSON(entry.sharedKey, payload);
+      await storeMessage(contactId,'in',plain.text);
+      if(ACTIVE_CONTACT===contactId) renderMessages(contactId); else renderContacts();
+    }catch(e){ console.error('decrypt fail', e); }
+  };
+}
+
+/* ---- Initiator (Device A) ---- */
+async function startInitiator(){
+  PAIRING = {role:'initiator'};
+  const phrase = genPhrase();
+  PAIRING.phrase = phrase;
+  document.getElementById('gen-phrase').textContent = phrase;
+  const {key, saltB64} = await pbkdf2Key(phrase);
+  PAIRING.pbKey = key;
+
+  const pc = new RTCPeerConnection({iceServers:ICE_SERVERS});
+  const dc = pc.createDataChannel('chat');
+  PAIRING.pc = pc; PAIRING.dc = dc;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIceComplete(pc);
+
+  const payload = {t:'offer', sdp: pc.localDescription.sdp, pub: ME.pubJwk, name: ME.name, sid: randId()};
+  PAIRING.myTempId = payload.sid;
+  const enc = await aesEncryptJSON(key, payload);
+  const blob = JSON.stringify({s:saltB64, iv:enc.iv, ct:enc.ct});
+  const code = b64.enc(new TextEncoder().encode(blob));
+  document.getElementById('offer-text').value = code;
+  document.getElementById('qr-offer').innerHTML='';
+  new QRCode(document.getElementById('qr-offer'), {text: code, width:220, height:220});
+
+  nav('initA');
+}
+async function gotAnswerCode(codeStr){
+  try{
+    const blob = JSON.parse(new TextDecoder().decode(b64.dec(codeStr)));
+    const payload = await aesDecryptJSON(PAIRING.pbKey, {iv:blob.iv, ct:blob.ct});
+    if(payload.t !== 'answer') throw new Error('bad type');
+    await PAIRING.pc.setRemoteDescription({type:'answer', sdp: payload.sdp});
+    setupDataChannelHandlers(payload.sid, PAIRING.dc);
+    const contact = {id: payload.sid, name: payload.name, pubJwk: payload.pub};
+    CONTACTS[contact.id] = contact;
+    await idbPut('contacts', contact);
+    const sharedKey = await deriveSharedAesKey(ME.keyPair.privateKey, payload.pub);
+    PC_MAP[contact.id] = {pc: PAIRING.pc, dc: PAIRING.dc, sharedKey};
+    document.getElementById('init-status').innerHTML = '<div class="ok">Spárováno! Otevírám chat…</div>';
+    renderContacts();
+    setTimeout(()=>{ openChat(contact.id); }, 700);
+  }catch(e){
+    document.getElementById('init-status').innerHTML = '<div class="warn">Kód se nepodařilo zpracovat. Zkontrolujte frázi a zkuste to znovu.</div>';
+  }
+}
+function processAnswerText(){
+  const v = document.getElementById('answer-text').value.trim();
+  if(v) gotAnswerCode(v);
+}
+
+/* ---- Joiner (Device B) ---- */
+function startJoiner(){
+  PAIRING = {role:'joiner'};
+  document.getElementById('join-phrase').value='';
+  document.getElementById('join-myname').value='';
+  nav('joinA');
+}
+async function gotOfferCode(codeStr){
+  try{
+    const phrase = document.getElementById('join-phrase').value;
+    const myName = document.getElementById('join-myname').value.trim() || 'Neznámé zařízení';
+    const blob = JSON.parse(new TextDecoder().decode(b64.dec(codeStr)));
+    const {key} = await pbkdf2Key(phrase, blob.s);
+    const payload = await aesDecryptJSON(key, {iv:blob.iv, ct:blob.ct});
+    if(payload.t !== 'offer') throw new Error('bad type');
+
+    const pc = new RTCPeerConnection({iceServers:ICE_SERVERS});
+    const contactId = payload.sid;
+    pc.ondatachannel = (ev)=>{
+      setupDataChannelHandlers(contactId, ev.channel);
+      PC_MAP[contactId].dc = ev.channel;
+    };
+    await pc.setRemoteDescription({type:'offer', sdp: payload.sdp});
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await waitIceComplete(pc);
+
+    const myId = randId();
+    const outPayload = {t:'answer', sdp: pc.localDescription.sdp, pub: ME.pubJwk, name: ME.name, sid: myId};
+    const enc = await aesEncryptJSON(key, outPayload);
+    const outBlob = JSON.stringify({iv:enc.iv, ct:enc.ct});
+    const code = b64.enc(new TextEncoder().encode(outBlob));
+    document.getElementById('answer-out-text').value = code;
+    document.getElementById('qr-answer').innerHTML='';
+    new QRCode(document.getElementById('qr-answer'), {text: code, width:220, height:220});
+
+    const contact = {id: contactId, name: payload.name, pubJwk: payload.pub};
+    CONTACTS[contact.id] = contact;
+    await idbPut('contacts', contact);
+    const sharedKey = await deriveSharedAesKey(ME.keyPair.privateKey, payload.pub);
+    PC_MAP[contactId] = {pc, dc:null, sharedKey};
+
+    nav('joinB');
+    document.getElementById('joinB-status').innerHTML = '<div class="muted" style="font-size:13px;">Čeká se, až první zařízení naskenuje odpověď a naváže spojení…</div>';
+    pc.onconnectionstatechange = ()=>{
+      if(pc.connectionState==='connected'){
+        document.getElementById('joinB-status').innerHTML = '<div class="ok">Spojeno a spárováno!</div>';
+        document.getElementById('btn-join-done').style.display='block';
+        renderContacts();
+      }
+    };
+  }catch(e){
+    document.getElementById('join-status').innerHTML = '<div class="warn">Kód se nepodařilo zpracovat. Zkontrolujte frázi a zkuste to znovu.</div>';
+  }
+}
+function processOfferText(){
+  const v = document.getElementById('offer-text-in').value.trim();
+  if(v) gotOfferCode(v);
+}
+function cancelPairing(){
+  if(PAIRING.pc) try{PAIRING.pc.close();}catch(e){}
+  PAIRING = {};
+  nav('home');
+}
+
+/* ---- Reconnect flow (uses stored identity keys, no phrase needed) ---- */
+async function reconnectFlow(){
+  PAIRING = {role:'reconnect-init', contactId: ACTIVE_CONTACT};
+  const contact = CONTACTS[ACTIVE_CONTACT];
+  const pc = new RTCPeerConnection({iceServers:ICE_SERVERS});
+  const dc = pc.createDataChannel('chat');
+  PAIRING.pc = pc; PAIRING.dc = dc;
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIceComplete(pc);
+  const sharedKey = await deriveSharedAesKey(ME.keyPair.privateKey, contact.pubJwk);
+  PAIRING.sharedKey = sharedKey;
+  const payload = {t:'r-offer', sdp: pc.localDescription.sdp, sid: ME.id};
+  const enc = await aesEncryptJSON(sharedKey, payload);
+  const code = b64.enc(new TextEncoder().encode(JSON.stringify(enc)));
+  document.getElementById('recon-out-text').value = code;
+  document.getElementById('qr-recon').innerHTML='';
+  new QRCode(document.getElementById('qr-recon'), {text: code, width:200, height:200});
+  switchTab('R','out');
+  nav('reconnect');
+}
+async function gotReconCode(codeStr, contactIdHint){
+  const contact = CONTACTS[contactIdHint || ACTIVE_CONTACT];
+  const sharedKey = await deriveSharedAesKey(ME.keyPair.privateKey, contact.pubJwk);
+  try{
+    const enc = JSON.parse(new TextDecoder().decode(b64.dec(codeStr)));
+    const payload = await aesDecryptJSON(sharedKey, enc);
+    if(payload.t==='r-offer'){
+      const pc = new RTCPeerConnection({iceServers:ICE_SERVERS});
+      pc.ondatachannel = (ev)=>{ setupDataChannelHandlers(contact.id, ev.channel); PC_MAP[contact.id].dc = ev.channel; };
+      await pc.setRemoteDescription({type:'offer', sdp: payload.sdp});
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await waitIceComplete(pc);
+      const outPayload = {t:'r-answer', sdp: pc.localDescription.sdp, sid: ME.id};
+      const encOut = await aesEncryptJSON(sharedKey, outPayload);
+      const code = b64.enc(new TextEncoder().encode(JSON.stringify(encOut)));
+      PC_MAP[contact.id] = {pc, dc:null, sharedKey};
+      document.getElementById('recon-out-text').value = code;
+      document.getElementById('qr-recon').innerHTML='';
+      new QRCode(document.getElementById('qr-recon'), {text: code, width:200, height:200});
+      switchTab('R','out');
+      document.getElementById('recon-status').innerHTML = '<div class="muted" style="font-size:13px;">Ukažte tento kód zpět druhému zařízení.</div>';
+    } else if(payload.t==='r-answer'){
+      await PAIRING.pc.setRemoteDescription({type:'answer', sdp: payload.sdp});
+      PC_MAP[contact.id] = {pc: PAIRING.pc, dc: PAIRING.dc, sharedKey: PAIRING.sharedKey};
+      setupDataChannelHandlers(contact.id, PAIRING.dc);
+      document.getElementById('recon-status').innerHTML = '<div class="ok">Připojeno!</div>';
+      setTimeout(()=>nav('chat'),600);
+    }
+  }catch(e){
+    document.getElementById('recon-status').innerHTML = '<div class="warn">Kód neplatný nebo z jiného zařízení.</div>';
+  }
+}
+function processReconText(){
+  const v = document.getElementById('recon-in-text').value.trim();
+  if(v) gotReconCode(v);
+}
+
+/* ===================== Camera / QR scanning ===================== */
+let activeStreams = {};
+async function startCamera(videoId, onResult){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const video = document.getElementById(videoId);
+    video.srcObject = stream;
+    await video.play();
+    activeStreams[videoId] = stream;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    function tick(){
+      if(!activeStreams[videoId]) return;
+      if(video.readyState===video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        ctx.drawImage(video,0,0,canvas.width,canvas.height);
+        const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+        const code = jsQR(img.data, img.width, img.height);
+        if(code && code.data){ stopCamera(videoId); onResult(code.data); return; }
+      }
+      requestAnimationFrame(tick);
+    }
+    tick();
+  }catch(e){
+    console.warn('camera unavailable', e);
+  }
+}
+function stopCamera(videoId){
+  const s = activeStreams[videoId];
+  if(s){ s.getTracks().forEach(t=>t.stop()); delete activeStreams[videoId]; }
+}
+function stopAllCameras(){ Object.keys(activeStreams).forEach(stopCamera); }
+
+function switchTab(group, which){
+  if(group==='A'){
+    document.getElementById('tabA-cam').classList.toggle('active', which==='cam');
+    document.getElementById('tabA-txt').classList.toggle('active', which==='txt');
+    document.getElementById('camA').style.display = which==='cam'?'block':'none';
+    document.getElementById('txtA').style.display = which==='txt'?'block':'none';
+    if(which==='cam') startCamera('video-A', gotAnswerCode); else stopCamera('video-A');
+  } else if(group==='B'){
+    document.getElementById('tabB-cam').classList.toggle('active', which==='cam');
+    document.getElementById('tabB-txt').classList.toggle('active', which==='txt');
+    document.getElementById('camB').style.display = which==='cam'?'block':'none';
+    document.getElementById('txtB').style.display = which==='txt'?'block':'none';
+    if(which==='cam') startCamera('video-B', gotOfferCode); else stopCamera('video-B');
+  } else if(group==='R'){
+    document.getElementById('tabR-out').classList.toggle('active', which==='out');
+    document.getElementById('tabR-in').classList.toggle('active', which==='in');
+    document.getElementById('rOut').style.display = which==='out'?'block':'none';
+    document.getElementById('rIn').style.display = which==='in'?'block':'none';
+    if(which==='in') switchTab('R2','cam'); else stopCamera('video-R');
+  } else if(group==='R2'){
+    document.getElementById('tabR2-cam').classList.toggle('active', which==='cam');
+    document.getElementById('tabR2-txt').classList.toggle('active', which==='txt');
+    document.getElementById('camR').style.display = which==='cam'?'block':'none';
+    document.getElementById('txtR').style.display = which==='txt'?'block':'none';
+    if(which==='cam') startCamera('video-R', (d)=>gotReconCode(d)); else stopCamera('video-R');
+  }
+}
+// auto-start camera when entering relevant screens
+const origNav = nav;
+nav = function(name){
+  origNav(name);
+  if(name==='initB') setTimeout(()=>startCamera('video-A', gotAnswerCode), 200);
+  if(name==='joinScan') setTimeout(()=>startCamera('video-B', gotOfferCode), 200);
+};
+
+function copyText(id){
+  const el = document.getElementById(id);
+  el.select(); el.setSelectionRange(0,99999);
+  try{ document.execCommand('copy'); }catch(e){}
+  if(navigator.clipboard) navigator.clipboard.writeText(el.value).catch(()=>{});
+}
+
+/* ===================== Chat ===================== */
+async function storeMessage(contactId, dir, text){
+  await idbPut('messages', {contactId, dir, text, ts: Date.now()});
+}
+async function openChat(contactId){
+  ACTIVE_CONTACT = contactId;
+  const c = CONTACTS[contactId];
+  document.getElementById('chat-name').textContent = c.name;
+  document.getElementById('chat-avatar').textContent = c.name.slice(0,1).toUpperCase();
+  updateChatHeader();
+  await renderMessages(contactId);
+  nav('chat');
+}
+function updateChatHeader(){
+  const entry = PC_MAP[ACTIVE_CONTACT];
+  const online = entry && entry.dc && entry.dc.readyState==='open';
+  document.getElementById('chat-status').textContent = online? 'Připojeno · šifrováno':'Nepřipojeno';
+  const bar = document.getElementById('connbar');
+  if(online){ bar.style.display='none'; } else {
+    bar.style.display='flex';
+    document.getElementById('connbar-text').textContent = 'Zařízení není právě připojené';
+  }
+}
+async function renderMessages(contactId){
+  const msgs = await idbAllByIndex('messages','contactId',contactId);
+  const el = document.getElementById('msgs');
+  el.innerHTML = msgs.map(m=>{
+    if(m.dir==='sys') return `<div class="bubble sys">${escapeHtml(m.text)}</div>`;
+    const time = new Date(m.ts).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
+    return `<div class="bubble ${m.dir}">${escapeHtml(m.text)}<span class="ts">${time}</span></div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+async function appendSystem(contactId, text){
+  await storeMessage(contactId,'sys',text);
+  if(ACTIVE_CONTACT===contactId) renderMessages(contactId);
+}
+function closeChat(){ ACTIVE_CONTACT=null; nav('home'); renderContacts(); }
+async function sendMessage(){
+  const input = document.getElementById('msg-input');
+  const text = input.value.trim();
+  if(!text || !ACTIVE_CONTACT) return;
+  const entry = PC_MAP[ACTIVE_CONTACT];
+  if(!entry || !entry.dc || entry.dc.readyState!=='open'){
+    appendSystem(ACTIVE_CONTACT,'Nelze odeslat — zařízení není připojené. Klepněte na "Připojit".');
+    return;
+  }
+  const enc = await aesEncryptJSON(entry.sharedKey, {text});
+  entry.dc.send(JSON.stringify(enc));
+  await storeMessage(ACTIVE_CONTACT,'out',text);
+  input.value='';
+  renderMessages(ACTIVE_CONTACT);
+}
+async function showFingerprint(){
+  const c = CONTACTS[ACTIVE_CONTACT];
+  const myPubRaw = JSON.stringify(ME.pubJwk);
+  const theirPubRaw = JSON.stringify(c.pubJwk);
+  const combined = [myPubRaw, theirPubRaw].sort().join('|');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(combined));
+  const bytes = Array.from(new Uint8Array(digest)).slice(0,10);
+  const fp = bytes.map(b=>b.toString(10).padStart(3,'0')).join(' ');
+  document.getElementById('fp-value').textContent = fp;
+  nav('fingerprint');
+}
+async function saveMyName(){
+  ME.name = document.getElementById('my-name-input').value.trim() || ME.name;
+  await idbPut('meta', {k:'me', id:ME.id, name:ME.name, pubJwk:ME.pubJwk});
+  nav('home');
+}
+
+boot();
+if('serviceWorker' in navigator){ window.addEventListener('load', ()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+</script>
+</body>
+</html>
